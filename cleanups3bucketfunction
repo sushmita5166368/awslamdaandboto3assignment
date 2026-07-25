@@ -1,0 +1,60 @@
+import os
+from datetime import datetime, timezone, timedelta
+import boto3
+
+
+# Environment variables or configuration
+BUCKET_NAME = os.environ.get("BUCKET_NAME", "sushmita-s3bucket-1")
+DAYS_THRESHOLD = int(os.environ.get("DAYS_THRESHOLD", "30"))
+
+
+s3_client = boto3.client("s3")
+
+
+def lambda_handler(event, context):
+    # Get current UTC time with timezone awareness
+    now = datetime.now(timezone.utc)
+    threshold_date = now - timedelta(days=DAYS_THRESHOLD)
+   
+    print(f"Checking bucket '{BUCKET_NAME}' for objects older than {DAYS_THRESHOLD} days (before {threshold_date.isoformat()})...")
+   
+    # Use paginator to handle buckets with more than 1,000 objects
+    paginator = s3_client.get_paginator("list_objects_v2")
+    page_iterator = paginator.paginate(Bucket=BUCKET_NAME)
+   
+    deleted_objects = []
+    total_scanned = 0
+
+
+    for page in page_iterator:
+        # Check if the bucket has objects
+        if "Contents" not in page:
+            continue
+           
+        for obj in page["Contents"]:
+            total_scanned += 1
+            key = obj["Key"]
+            last_modified = obj["LastModified"]  # Already timezone-aware UTC datetime
+           
+            # Compare object's age with the threshold
+            if last_modified < threshold_date:
+                print(f"Deleting object: {key} (Last Modified: {last_modified})")
+               
+                s3_client.delete_object(
+                    Bucket=BUCKET_NAME,
+                    Key=key
+                )
+                deleted_objects.append(key)
+
+
+    summary = {
+        "total_scanned": total_scanned,
+        "total_deleted": len(deleted_objects),
+        "deleted_files": deleted_objects
+    }
+   
+    print(f"Cleanup complete. Scanned: {total_scanned}, Deleted: {len(deleted_objects)}")
+    return {
+        "statusCode": 200,
+        "body": summary
+    }
