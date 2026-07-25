@@ -1,0 +1,35 @@
+import boto3
+from datetime import datetime
+
+
+ec2 = boto3.client('ec2')
+
+
+def lambda_handler(event, context):
+    # TODO get instance id from everbridge
+    instance_id= event['detail']['instance-id']
+    launchdate= datetime.now().strftime("%d/%m/%Y")
+    ec2.create_tags(
+        Resources=[
+            instance_id
+        ],
+        Tags=[
+            {
+                'Key': 'LaunchDate',
+                'Value': launchdate
+            },
+            {
+                'Key': 'Owner',
+                'Value': 'Sushmita-instance'
+            }
+        ]
+    )
+    print(f"Successfully tagged the instance to {instance_id}")
+
+
+
+
+    return {
+        'statusCode': 200,
+        'body': f'tag added to the instance {instance_id}'
+    }
