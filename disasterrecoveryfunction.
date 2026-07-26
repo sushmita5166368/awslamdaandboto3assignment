@@ -62,7 +62,7 @@ def lambda_handler(event, context):
         MaxCount=1,
         InstanceType='t3.micro',
         KeyName='Key',
-        SecurityGroupIds=['sg-0a710e6997af1e229'],
+        SecurityGroupIds=['sg-XXXXXXXXXXXX'],
         TagSpecifications=[
             {
                 'ResourceType': 'instance',
