@@ -61,7 +61,7 @@ def lambda_handler(event, context):
         MinCount=1,
         MaxCount=1,
         InstanceType='t3.micro',
-        KeyName='Sushmita',
+        KeyName='Key',
         SecurityGroupIds=['sg-0a710e6997af1e229'],
         TagSpecifications=[
             {
