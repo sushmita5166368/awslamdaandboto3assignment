@@ -1,0 +1,90 @@
+Lambda_fucntion :
+
+import boto3
+import json
+import time
+from datetime import datetime, timezone
+
+ec2_client = boto3.client('ec2')
+
+def lambda_handler(event, context):
+    
+    ami_name = f"DisasterRecoveryAMI-{datetime.now(timezone.utc).strftime('%Y-%m-%d-%H-%M-%S')}"
+
+    # 1. Snapshot find 
+    volume_id = event["volume_id"]
+    snapshots = ec2_client.describe_snapshots(
+        OwnerIds=['self'], 
+        Filters=[
+            { 
+                'Name': 'volume-id',
+                'Values': [volume_id]
+            }
+        ]
+    )['Snapshots']
+    
+    if not snapshots:
+        raise Exception(f"Volume ID {volume_id} ke liye koi snapshot nahi mila.")
+
+    latest_snapshot = sorted(snapshots, key=lambda x: x['StartTime'], reverse=True)[0]
+    snapshot_id = latest_snapshot['SnapshotId']
+    print(f"Latest Snapshot found: {latest_snapshot}")
+    
+    # 2. AMI Register 
+    registerami = ec2_client.register_image(
+        Name=ami_name,
+        Architecture='x86_64',
+        RootDeviceName='/dev/xvda',
+        VirtualizationType='hvm',
+        EnaSupport=True,
+        BlockDeviceMappings=[
+            {
+                'DeviceName': '/dev/xvda',
+                'Ebs': {
+                    'SnapshotId': snapshot_id,
+                    'VolumeType': 'gp3',
+                    'DeleteOnTermination': True
+                }
+            }
+        ]
+    )
+
+    print(f"AMI Registration response: {registerami}")
+    ami_id = registerami['ImageId']
+    
+    # Wait until AMI becomes available
+    ec2_client.get_waiter('image_available').wait(ImageIds=[ami_id])
+    
+    # 3. New EC2 Instance Launch 
+    run_response = ec2_client.run_instances(
+        ImageId=ami_id,
+        MinCount=1,
+        MaxCount=1,
+        InstanceType='t3.micro',
+        KeyName='Sushmita',
+        SecurityGroupIds=['sg-0a710e6997af1e229'],
+        TagSpecifications=[
+            {
+                'ResourceType': 'instance',
+                'Tags': [
+                    {'Key': 'Name', 'Value': f'Restored-Instance-{snapshot_id}'},
+                    {'Key': 'RestoredFrom', 'Value': snapshot_id},
+                    {'Key': 'SourceAMI', 'Value': ami_id}
+                ]
+            }
+        ]
+    )
+        
+    # Instance ID Extract karein
+    new_instance_id = run_response['Instances'][0]['InstanceId']
+       
+    print(f"New instance created with ID: {new_instance_id}")
+
+    return {
+        "statusCode": 200,
+        "body": json.dumps({
+            "InstanceId": new_instance_id,
+            "AMI": ami_id,
+            "Snapshot": snapshot_id
+        })
+    }
